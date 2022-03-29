@@ -1,0 +1,342 @@
+Created on Fri Feb 18 14:04:54 2022
+
+@author: ym827378
+"""
+
+
+from netCDF4 import Dataset    
+import numpy as np
+import matplotlib.pyplot as plt
+import numpy.ma as ma
+import cartopy.crs as ccrs
+
+def read_in_le(filename):
+    '''
+    input: latent heat filename
+    output: latent heat variable
+    '''
+    filepath = '/storage/basic/nceo/nemo/users/la916032/ET/FLUXCOM/LE.RS_METEO.EBC-ALL.MLM-ALL.METEO-ALL.720_360.monthly.20'
+    data = Dataset(filepath+filename)
+    latent_heat = data.variables['LE'][:]/2.5
+    
+    return latent_heat
+
+letdat = Dataset('/storage/basic/nceo/nemo/users/la916032/ET/FLUXCOM/LE.RS_METEO.EBC-ALL.MLM-ALL.METEO-ALL.720_360.monthly.2001.nc')
+print(letdat.variables['LE'])
+
+def weight(masked_data, basin_no):
+    '''
+    weights dats according to gridbox size
+    '''
+    weight = mask_data2D(clat2D, basin_no)
+    a = len(masked_data[:,0,0])
+    weighted_data = np.zeros(a)
+    for i in range(a):
+        weighted_data[i] =(masked_data[i,:,:]*weight).sum()/(weight).sum()
+    return weighted_data
+
+
+
+def mask_data(data, basin_no):
+    '''
+    input: no. time points
+    output: mask
+    '''
+    a = len(data[:,0,0])
+    mask_boolean = np.zeros(shape =(a,360,720))
+    for i in range(360):
+        for j in range(720):
+            if basinid[i,j] == basin_no:
+                mask_boolean[:,i,j] = 0
+            else:
+                mask_boolean[:,i,j] = 1
+    masked_data = ma.masked_array(data, mask = mask_boolean)
+    return masked_data
+
+def mask_data2D(data, basin_no):
+    '''
+    input:
+    '''
+    mask_boolean = np.zeros(shape =(360,720))
+    for i in range(360):
+        for j in range(720):
+            if basinid[i,j] == basin_no:
+                mask_boolean[i,j] = 0
+            else:
+                mask_boolean[i,j] = 1
+    masked_data = ma.masked_array(data, mask = mask_boolean)
+    return masked_data
+   
+    # create mask over land 
+def continental_mask(data):
+    '''
+    input: data
+    output: mask
+    '''
+    mask = np.zeros(shape =(len(data[:,0,0]),360,720))
+    for i in range(360):
+        for j in range(720):
+            if Q[0,i,j] > -2:
+                mask[:,i,j] = 0
+            else:
+                mask[:,i,j] = 1
+    masked_data = ma.masked_array(data, mask = mask)
+    return masked_data
+
+
+def plot_onproj(lon, lat, field2d, title, scale_label):
+    """
+    function plots a 2D field on map using cartopy map projection.
+    Input: longitude, latitude, infield, name of field
+    output: plot of field
+
+    """
+    field = field2d[:,:]
+    fig = plt.figure()
+    ax = plt.axes(projection=ccrs.PlateCarree())
+    ax.coastlines(resolution = '50m', color ='black', linewidth = 1)
+    ax.gridlines()    
+    ax.gridlines(draw_labels=True, linestyle = 'dotted')
+    plt.title(title)
+    nlevs = 20
+    mycmap2 = plt.get_cmap('RdYlBu_r')
+    plt.contourf(lon,lat,field,nlevs,
+                transform=ccrs.PlateCarree(),cmap = mycmap2)
+    plt.colorbar(label= scale_label,
+                 orientation = 'horizontal', fraction = 0.09, pad= 0.1)
+    plt.tight_layout()
+    plt.show()       
+  
+def plot_onproj_rainbow(lon, lat, field2d, title, scale_label):
+    """
+    function plots a 2D field on map using cartopy map projection.
+    Input: longitude, latitude, infield, name of field
+    output: plot of field
+
+    """
+    field = field2d[:,:]
+    fig = plt.figure()
+    ax = plt.axes(projection=ccrs.PlateCarree())
+    ax.coastlines(resolution = '50m', color ='black', linewidth = 1)
+    ax.gridlines()    
+    ax.gridlines(draw_labels=True, linestyle = 'dotted')
+    plt.title(title)
+    nlevs = 20
+    mycmap2 = plt.get_cmap('rainbow')
+    plt.contourf(lon,lat,field,nlevs,
+                transform=ccrs.PlateCarree(),cmap = mycmap2)
+    plt.colorbar(label= scale_label,
+                 orientation = 'horizontal', fraction = 0.09, pad= 0.1)
+    plt.tight_layout()
+    plt.show()       
+  
+# runoff data 
+runoff_fn = '/storage/basic/nceo/nemo/users/la916032/mask/GRUN_v1_GSWP3_WGS84_05_1902_2014.nc'
+runoff_data = Dataset(runoff_fn)
+runoff = runoff_data.variables['Runoff'][:]
+# change until days since 2001-01-01 to match storage data
+runoff = runoff[1188:,:,:]
+# correct lat and lon data 
+Q = runoff[:,::-1,:]
+print(np.shape(Q))    
+    
+
+# Read in mask data
+basin_fn = '/storage/basic/nceo/nemo/users/la916032/mask/basins.nc'
+basin = Dataset(basin_fn)
+basinid = basin.variables['basinid'][:]
+b_lat = basin.variables['latitude'][:] # 90 - -90 0.5 deg res
+b_lon = basin.variables['longitude'][:] # -180-180
+mg_lonb, mg_latb = np.meshgrid(b_lon, b_lat)
+
+lat_rad = b_lat*np.pi/180 # convert to radian
+cos_lat = np.cos(lat_rad)
+lons2D, clat2D = np.meshgrid(b_lon,cos_lat)    
+    
+
+
+#  Read in Precipitation data
+precip_fn = 'precip.mon.mean.nc'
+precip_data = Dataset(precip_fn)
+precip = precip_data.variables['precip'][:] # mm /day
+precip25res = precip[264:,:,:]
+p_time = precip_data.variables['time'][:] # days since 1800 01-01 
+p_time_01 = p_time[264:] - p_time[264] # convert to days since 2001 - 01 -01
+precip = precip[264:,:,:]
+
+# make precipitation data the right size
+p2 = np.repeat(precip, 5, axis = 1)
+p3 = np.repeat(p2, 5, axis = 2)
+precip = p3 
+
+# correct precipitation lat and lon
+precip2 = precip[:,::-1,:]
+a1 = precip2[:,:,0:360]
+b2 = precip2[:,:,360:720]
+c3 = np.concatenate((b2,a1), axis = 2)
+
+P = c3 
+# Continetal precipitation
+P_cont = continental_mask(P)
+
+# interpolated storage data
+storage_filled_fn = '/storage/basic/nceo/nemo/users/la916032/mask/GRACE_2001_2020_land_mthly_interp_copy.nc'
+storage_filled_data = Dataset(storage_filled_fn)
+stor_fill_time = storage_filled_data.variables['time'][:]
+stor_fill = storage_filled_data.variables['storage'][:]
+S_fill = stor_fill[:,::-1,:]
+print(np.shape(S_fill))
+
+# calculate dS - this starts dec 2001
+stor_fill02 = S_fill[11:240,:,:]
+
+
+
+dS = np.zeros(shape = (227, 360, 720)) # begins jan 2002
+
+
+for i in range(225):
+    dS[i,:,:] = (stor_fill02[i+2,:,:] - stor_fill02[i,:,:])/2
+# connvert dS into mm/day from cm/month
+dS=dS/3.046
+# in mm/day 
+dS = ma.masked_greater(dS, 999)
+
+
+
+
+
+LE_01 = read_in_le('01.nc')
+LE_02 = read_in_le('02.nc')
+LE_03 = read_in_le('03.nc')
+LE_04 = read_in_le('04.nc')
+LE_05 = read_in_le('05.nc')
+LE_06 = read_in_le('06.nc')
+LE_07 = read_in_le('07.nc')
+LE_08 = read_in_le('08.nc')
+LE_09 = read_in_le('09.nc')
+LE_10 = read_in_le('10.nc')
+LE_11 = read_in_le('11.nc')
+LE_12 = read_in_le('12.nc')
+LE_13 = read_in_le('13.nc')
+
+# LE data 2001 - 2013
+LE = np.concatenate((LE_01, LE_02, LE_03, LE_04, LE_05, LE_06, LE_07, LE_08, LE_09, LE_10, LE_11, LE_12, LE_13), axis = 0)
+LE = ma.masked_less(LE, -999)
+
+print(np.shape(LE))
+print(np.min(LE[:,:,:]))
+
+# test LE plot  - some  a
+plot_onproj_rainbow(mg_lonb,mg_latb,LE.mean(axis=0),'LE 2001-2013','mm/day')
+
+
+# sensible heat data 
+def read_in_sh(year):
+    sh_path ='/storage/basic/nceo/nemo/users/la916032/ET/FLUXCOM/H.RS_METEO.EBC-ALL.MLM-ALL.METEO-ALL.720_360.monthly.20' 
+    SH_data = Dataset(sh_path+year)
+    # convert from MJ m-2 day-1 to mm/day 
+    SH = SH_data.variables['H'][:]/ 2.5 
+    return SH 
+
+
+fn_sh01= '/storage/basic/nceo/nemo/users/la916032/ET/FLUXCOM/H.RS_METEO.EBC-ALL.MLM-ALL.METEO-ALL.720_360.monthly.2001.nc'
+SH01_data = Dataset(fn_sh01)
+print(SH01_data.variables)
+
+SH_01 = read_in_sh('01.nc')
+SH_02 = read_in_sh('02.nc')
+SH_03 = read_in_sh('03.nc')
+SH_04 = read_in_sh('04.nc')
+SH_05 = read_in_sh('05.nc')
+SH_06 = read_in_sh('06.nc')
+SH_07 = read_in_sh('07.nc')
+SH_08 = read_in_sh('08.nc')
+SH_09 = read_in_sh('09.nc')
+SH_10 = read_in_sh('10.nc')
+SH_11 = read_in_sh('11.nc')
+SH_12 = read_in_sh('12.nc')
+SH_13 = read_in_sh('13.nc')
+
+# SH data 2001 - 2013
+SH = np.concatenate((SH_01, SH_02, SH_03, SH_04, SH_05, SH_06, SH_07, SH_08, SH_09, SH_10, SH_11, SH_12, SH_13), axis = 0)
+SH = ma.masked_less(SH, -999)
+
+print(np.shape(SH))
+print(np.max(SH[:,:,:]))
+print(np.min(SH[:,:,:]))
+# sensible heat data 
+plot_onproj_rainbow(mg_lonb,mg_latb,SH.mean(axis=0),'SH 2001-2013','mm/day')
+
+
+
+
+
+ceres_filename = '/storage/basic/nceo/nemo/users/la916032/CERES/CERES_EBAF_Ed4.1_Subset_200003-202006.nc'
+
+data = Dataset(ceres_filename)
+print(data.variables.keys())
+
+#units: degrees_east valid_range: [-180.  360.]
+lon = data.variables['lon'][:] # 0.5 tp 359.5 1 degree resolution 
+lat = data.variables['lat'][:] # -89.5 to 89.5 1 degree resolution
+
+aus_lon = lon[112:154]
+aus_lat = lat[49:79]
+
+mg_lon, mg_lat = np.meshgrid(lon, lat)
+aus_mg_lon, aus_mg_lat = np.meshgrid(aus_lon, aus_lat)
+
+#days since 2000-03-01 
+# march 200 - july 2020
+time = data.variables['time'][:]
+
+# time where we have a complete year  19 years 2001 to 2019 
+time_0119 = time[10:238]
+
+# 2002 - 2020
+time_0211 = time[22:] /365.25 + 2000
+
+# separate variables 
+srf_net_tot = data.variables['sfc_net_tot_all_mon'][:]
+srf_down_lw = data.variables['sfc_lw_down_all_mon']
+srf_up_lw = data.variables['sfc_lw_up_all_mon']
+srf_down_sw = data.variables['sfc_sw_down_all_mon']
+srf_up_sw = data.variables['sfc_sw_up_all_mon']
+
+plot_onproj_rainbow(mg_lon,mg_lat,(srf_down_lw[9:237,:,:]).mean(axis=0),'Downwards longwave mean 2001-2019','W/m2')
+plot_onproj_rainbow(mg_lon,mg_lat,(srf_up_lw[9:237,:,:]).mean(axis=0),'Upwards longwave mean 2001 - 2019','W/m2')
+plot_onproj_rainbow(mg_lon,mg_lat,(srf_up_sw[9:237,:,:]).mean(axis=0),'Upwards shortwave mean 2001-2019','W/m2')
+plot_onproj_rainbow(mg_lon,mg_lat,(srf_down_sw[9:237,:,:]).mean(axis=0),'Downwards shortwave mean 2001-2019','W/m2')
+plot_onproj_rainbow(mg_lon,mg_lat,(srf_net_tot[9:237,:,:]).mean(axis=0),'Surface net mean 2001-2019','W/m2')
+
+def match_mask_dims(data):
+    # make 0.5x0.5 grids (360x720)
+    data1 = np.repeat(data, 2, axis = 1)
+    data2 = np.repeat(data1, 2, axis = 2)
+    
+    # flip lat
+    data3 = data2[:,::-1,:]
+    
+    # correct for lon
+    a1 = data3[:,:,0:360]
+    a2 = data3[:,:,360:720]
+    output = np.concatenate((a2,a1), axis = 2)
+    return output
+
+# create global data o same dimensions as mask  
+DSR_global = match_mask_dims(srf_down_sw) 
+DLR_global = match_mask_dims(srf_down_lw)
+USW_global  = match_mask_dims(srf_up_sw) 
+ULW_global = match_mask_dims(srf_up_lw) 
+Rn_global = match_mask_dims(srf_net_tot)  
+ 
+plot_onproj_rainbow(mg_lonb,mg_latb,dS[0,:,:],'Downwards Longwave mean 2001-2019','W/m2')
+
+
+cont_DSR = continental_mask(DSR_global)
+cont_DLR = continental_mask(DLR_global)
+cont_USW= continental_mask(USW_global)
+cont_ULW = continental_mask(ULW_global)
+cont_Rn = continental_mask(Rn_global)
+
